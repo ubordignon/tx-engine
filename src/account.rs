@@ -3,7 +3,7 @@ use std::io::stdout;
 use serde::{Serialize, Serializer};
 use thiserror::Error;
 
-use super::transaction::Transactions;
+use super::transaction::{Transaction, TransactionType, Transactions};
 
 #[derive(Debug, Error)]
 pub enum AccountError {
@@ -27,7 +27,7 @@ where
     ser.serialize_f64(int + frac)
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, Default, PartialEq, Serialize)]
 pub struct Account {
     client: u16,
     #[serde(skip)]
@@ -39,6 +39,18 @@ pub struct Account {
     #[serde(serialize_with = "serialize_f64_to_decimal_precision")]
     total: f64,
     locked: bool,
+}
+
+impl Account {
+    pub fn apply_transaction(&mut self, tx: Transaction) {
+        if *tx.client() != self.client {
+            panic!(
+                "applied transaction on client {} to account {}",
+                tx.client(),
+                self.client
+            );
+        }
+    }
 }
 
 pub struct Accounts(Vec<Account>);
@@ -57,14 +69,14 @@ impl Accounts {
 
 #[cfg(test)]
 mod tests {
-    use super::{Account, Accounts, Transactions};
+    use super::{Account, Accounts, Transaction, TransactionType, Transactions};
 
     #[test]
     fn serialize_accounts() {
         let accounts = Accounts(vec![
             Account {
                 client: 1,
-                transactions: Transactions(vec![]),
+                transactions: Transactions::default(),
                 available: 1.5,
                 held: 0.0,
                 total: 1.5,
@@ -72,7 +84,7 @@ mod tests {
             },
             Account {
                 client: 2,
-                transactions: Transactions(vec![]),
+                transactions: Transactions::default(),
                 available: 2.0,
                 held: 0.0,
                 total: 2.0,
@@ -98,7 +110,7 @@ client,available,held,total,locked
     fn serialize_long_floats() {
         let account = Account {
             client: 1,
-            transactions: Transactions(vec![]),
+            transactions: Transactions::default(),
             available: 1.11223344,
             held: 0.0,
             total: 1.11223344,
@@ -112,5 +124,18 @@ client,available,held,total,locked
         let account = std::str::from_utf8(account).unwrap();
         let account_expected = "client,available,held,total,locked\n1,1.1122,0.0,1.1122,false\n";
         assert_eq!(account, account_expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "applied transaction on client 1 to account 0")]
+    fn apply_transaction_to_wrong_account() {
+        // If a transaction on client x is applied to account y, then it is an implementation issue
+        // and it should panic.
+        Account::default().apply_transaction(Transaction::new(
+            TransactionType::Deposit,
+            1,
+            1,
+            Some(1.0),
+        ));
     }
 }

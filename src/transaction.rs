@@ -1,8 +1,10 @@
+use derive_getters::Getters;
+use derive_more::Constructor;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
-enum TransactionType {
+pub enum TransactionType {
     Deposit,
     Withdrawal,
     Dispute,
@@ -10,7 +12,7 @@ enum TransactionType {
     Chargeback,
 }
 
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Constructor, Debug, Deserialize, Getters, PartialEq)]
 pub struct Transaction {
     #[serde(rename = "type")]
     type_: TransactionType,
@@ -19,7 +21,7 @@ pub struct Transaction {
     amount: Option<f64>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Transactions(pub Vec<Transaction>);
 
 impl Transactions {
