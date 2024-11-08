@@ -20,7 +20,7 @@ pub struct Transaction {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Transactions(Vec<Transaction>);
+pub struct Transactions(pub Vec<Transaction>);
 
 impl Transactions {
     pub fn from_csv(path: &str) -> Result<Self, csv::Error> {
