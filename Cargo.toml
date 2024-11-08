@@ -1,0 +1,10 @@
+[package]
+name = "tx-engine"
+version = "0.1.0"
+edition = "2021"
+authors = ["Ulisse Bordignon"]
+description = "Toy transaction processing and account management engine"
+
+[dependencies]
+csv = "1.3.0"
+serde = { version = "1.0.214", features = ["derive"] }
