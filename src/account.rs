@@ -42,7 +42,14 @@ pub struct Account {
 }
 
 impl Account {
-    pub fn apply_transaction(&mut self, tx: Transaction) {
+    pub fn new(client: u16) -> Self {
+        Self {
+            client,
+            ..Self::default()
+        }
+    }
+
+    pub fn apply_transaction(&mut self, tx: Transaction) -> Result<(), AccountError> {
         if *tx.client() != self.client {
             panic!(
                 "applied transaction on client {} to account {}",
@@ -50,6 +57,22 @@ impl Account {
                 self.client
             );
         }
+
+        match &tx.type_() {
+            TransactionType::Deposit => {
+                let amount = tx
+                    .amount()
+                    .expect("deposits should be some non zero amount");
+                self.available += amount;
+                self.total += amount;
+                self.transactions.push(tx);
+            }
+            TransactionType::Withdrawal => (),
+            TransactionType::Dispute => (),
+            TransactionType::Resolve => (),
+            TransactionType::Chargeback => (),
+        }
+        Ok(())
     }
 }
 
@@ -131,11 +154,35 @@ client,available,held,total,locked
     fn apply_transaction_to_wrong_account() {
         // If a transaction on client x is applied to account y, then it is an implementation issue
         // and it should panic.
-        Account::default().apply_transaction(Transaction::new(
-            TransactionType::Deposit,
-            1,
-            1,
-            Some(1.0),
-        ));
+        Account::default()
+            .apply_transaction(Transaction::new(TransactionType::Deposit, 1, 1, Some(1.0)))
+            .unwrap();
+    }
+
+    #[test]
+    fn apply_deposit() {
+        let deposit_amount = 1.0;
+        let deposit = Transaction::new(TransactionType::Deposit, 1, 1, Some(deposit_amount));
+        let mut account = Account::new(1);
+        account.apply_transaction(deposit.clone()).unwrap();
+        assert_eq!(
+            account,
+            Account {
+                client: 1,
+                transactions: Transactions(vec![deposit]),
+                available: deposit_amount,
+                held: 0.0,
+                total: deposit_amount,
+                locked: false
+            }
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "deposits should be some non zero amount")]
+    fn apply_deposit_with_none_amount() {
+        Account::new(1)
+            .apply_transaction(Transaction::new(TransactionType::Deposit, 1, 1, None))
+            .unwrap();
     }
 }
