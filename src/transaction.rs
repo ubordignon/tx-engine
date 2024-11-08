@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use derive_getters::Getters;
 use derive_more::{Constructor, Deref, DerefMut};
 use serde::Deserialize;
@@ -21,7 +23,26 @@ pub struct Transaction {
     amount: Option<f64>,
 }
 
-#[derive(Debug, Default, Deref, DerefMut, PartialEq)]
+impl Display for Transaction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(amount) = self.amount {
+            write!(
+                f,
+                "Transaction {} (type: {:?}, client: {}, amount: {:?})",
+                self.tx, self.type_, self.client, amount,
+            )
+        } else {
+            write!(
+                f,
+                "Transaction {} (type: {:?}, client: {})",
+                self.tx, self.type_, self.client,
+            )
+        }
+    }
+}
+
+// TODO: remove `Clone` in optimization
+#[derive(Clone, Debug, Default, Deref, DerefMut, PartialEq)]
 pub struct Transactions(pub Vec<Transaction>);
 
 impl Transactions {

@@ -1,4 +1,4 @@
-use std::io::stdout;
+use std::{fmt::Display, io::stdout};
 
 use serde::{Serialize, Serializer};
 use thiserror::Error;
@@ -11,6 +11,8 @@ pub enum AccountError {
     CsvError(#[from] csv::Error),
     #[error("io error: {0}")]
     IoError(#[from] std::io::Error),
+    #[error("insufficient funds to apply withdrawal, account: {0}, withdrawal: {1}")]
+    WithdrawalError(Account, Transaction),
 }
 
 const DECIMAL_PRECISION: i32 = 4;
@@ -27,7 +29,7 @@ where
     ser.serialize_f64(int + frac)
 }
 
-#[derive(Debug, Default, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Account {
     client: u16,
     #[serde(skip)]
@@ -58,6 +60,8 @@ impl Account {
             );
         }
 
+        // TODO: consider referencing, see `Account` cloning for `WithdrawalError`
+        self.transactions.push(tx.clone());
         match &tx.type_() {
             TransactionType::Deposit => {
                 let amount = tx
@@ -65,14 +69,32 @@ impl Account {
                     .expect("deposits should be some non zero amount");
                 self.available += amount;
                 self.total += amount;
-                self.transactions.push(tx);
             }
-            TransactionType::Withdrawal => (),
+            TransactionType::Withdrawal => {
+                let amount = tx
+                    .amount()
+                    .expect("withdrawals should be some non zero amount");
+                if self.available < amount {
+                    return Err(AccountError::WithdrawalError(self.clone(), tx));
+                }
+                self.available -= amount;
+                self.total -= amount;
+            }
             TransactionType::Dispute => (),
             TransactionType::Resolve => (),
             TransactionType::Chargeback => (),
         }
         Ok(())
+    }
+}
+
+impl Display for Account {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Account {} (available: {}, total: {}, locked: {})",
+            self.client, self.available, self.total, self.locked,
+        )
     }
 }
 
@@ -92,7 +114,7 @@ impl Accounts {
 
 #[cfg(test)]
 mod tests {
-    use super::{Account, Accounts, Transaction, TransactionType, Transactions};
+    use super::{Account, AccountError, Accounts, Transaction, TransactionType, Transactions};
 
     #[test]
     fn serialize_accounts() {
@@ -183,6 +205,58 @@ client,available,held,total,locked
     fn apply_deposit_with_none_amount() {
         Account::new(1)
             .apply_transaction(Transaction::new(TransactionType::Deposit, 1, 1, None))
+            .unwrap();
+    }
+
+    #[test]
+    fn apply_withdrawal() {
+        let withdrawal_amount = 1.0;
+        let withdrawal =
+            Transaction::new(TransactionType::Withdrawal, 1, 1, Some(withdrawal_amount));
+        let mut account = Account {
+            client: 1,
+            transactions: Transactions::default(),
+            available: withdrawal_amount,
+            held: 0.0,
+            total: withdrawal_amount,
+            locked: false,
+        };
+        account.apply_transaction(withdrawal.clone()).unwrap();
+        assert_eq!(
+            account,
+            Account {
+                client: 1,
+                transactions: Transactions(vec![withdrawal]),
+                available: 0.0,
+                held: 0.0,
+                total: 0.0,
+                locked: false
+            }
+        );
+    }
+
+    #[test]
+    fn apply_withdrawal_overdrawn() {
+        let withdrawal = Transaction::new(TransactionType::Withdrawal, 1, 1, Some(1.0));
+        let mut account = Account {
+            client: 1,
+            transactions: Transactions::default(),
+            available: 0.0,
+            held: 0.0,
+            total: 0.0,
+            locked: false,
+        };
+        assert!(matches!(
+            account.apply_transaction(withdrawal.clone()).unwrap_err(),
+            AccountError::WithdrawalError(..)
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "withdrawals should be some non zero amount")]
+    fn apply_withdrawal_with_none_amount() {
+        Account::new(1)
+            .apply_transaction(Transaction::new(TransactionType::Withdrawal, 1, 1, None))
             .unwrap();
     }
 }
