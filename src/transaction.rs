@@ -23,8 +23,15 @@ pub struct Transaction {
     client: ClientId,
     tx: TransactionId,
     amount: Option<f64>,
+    #[serde(skip)]
+    disputed: bool,
 }
 
+impl Transaction {
+    pub fn dispute(&mut self) {
+        self.disputed = true;
+    }
+}
 impl Display for Transaction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(amount) = self.amount {
@@ -70,31 +77,36 @@ mod tests {
                     type_: TransactionType::Deposit,
                     client: 1,
                     tx: 1,
-                    amount: Some(2.0)
+                    amount: Some(2.0),
+                    disputed: false
                 },
                 Transaction {
                     type_: TransactionType::Withdrawal,
                     client: 1,
                     tx: 2,
-                    amount: Some(1.5)
+                    amount: Some(1.5),
+                    disputed: false
                 },
                 Transaction {
                     type_: TransactionType::Dispute,
                     client: 1,
                     tx: 2,
-                    amount: None
+                    amount: None,
+                    disputed: false
                 },
                 Transaction {
                     type_: TransactionType::Resolve,
                     client: 1,
                     tx: 2,
-                    amount: None
+                    amount: None,
+                    disputed: false
                 },
                 Transaction {
                     type_: TransactionType::Chargeback,
                     client: 1,
                     tx: 2,
-                    amount: None
+                    amount: None,
+                    disputed: false
                 },
             ])
         );

@@ -181,14 +181,20 @@ client,available,held,total,locked
         // If a transaction on client x is applied to account y, then it is an implementation issue
         // and it should panic.
         Account::default()
-            .apply_transaction(Transaction::new(TransactionType::Deposit, 1, 1, Some(1.0)))
+            .apply_transaction(Transaction::new(
+                TransactionType::Deposit,
+                1,
+                1,
+                Some(1.0),
+                false,
+            ))
             .unwrap();
     }
 
     #[test]
     fn apply_deposit() {
         let deposit_amount = 1.0;
-        let deposit = Transaction::new(TransactionType::Deposit, 1, 1, Some(deposit_amount));
+        let deposit = Transaction::new(TransactionType::Deposit, 1, 1, Some(deposit_amount), false);
         let mut account = Account::new(1);
         account.apply_transaction(deposit.clone()).unwrap();
         let mut transactions = TransactionMap::new();
@@ -210,15 +216,26 @@ client,available,held,total,locked
     #[should_panic(expected = "deposits should be some non zero amount")]
     fn apply_deposit_with_none_amount() {
         Account::new(1)
-            .apply_transaction(Transaction::new(TransactionType::Deposit, 1, 1, None))
+            .apply_transaction(Transaction::new(
+                TransactionType::Deposit,
+                1,
+                1,
+                None,
+                false,
+            ))
             .unwrap();
     }
 
     #[test]
     fn apply_withdrawal() {
         let withdrawal_amount = 1.0;
-        let withdrawal =
-            Transaction::new(TransactionType::Withdrawal, 1, 1, Some(withdrawal_amount));
+        let withdrawal = Transaction::new(
+            TransactionType::Withdrawal,
+            1,
+            1,
+            Some(withdrawal_amount),
+            false,
+        );
         let mut account = Account {
             client: 1,
             transactions: TransactionMap::default(),
@@ -245,7 +262,7 @@ client,available,held,total,locked
 
     #[test]
     fn apply_withdrawal_overdrawn() {
-        let withdrawal = Transaction::new(TransactionType::Withdrawal, 1, 1, Some(1.0));
+        let withdrawal = Transaction::new(TransactionType::Withdrawal, 1, 1, Some(1.0), false);
         let mut account = Account {
             client: 1,
             transactions: TransactionMap::default(),
@@ -264,7 +281,13 @@ client,available,held,total,locked
     #[should_panic(expected = "withdrawals should be some non zero amount")]
     fn apply_withdrawal_with_none_amount() {
         Account::new(1)
-            .apply_transaction(Transaction::new(TransactionType::Withdrawal, 1, 1, None))
+            .apply_transaction(Transaction::new(
+                TransactionType::Withdrawal,
+                1,
+                1,
+                None,
+                false,
+            ))
             .unwrap();
     }
 }
