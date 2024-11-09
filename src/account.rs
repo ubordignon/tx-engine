@@ -347,9 +347,8 @@ client,available,held,total,locked
                 client: 1,
                 transactions,
                 available: deposit_amount,
-                held: 0.0,
                 total: deposit_amount,
-                locked: false
+                ..Account::default()
             }
         );
     }
@@ -368,9 +367,8 @@ client,available,held,total,locked
             client: 1,
             transactions: TransactionMap::default(),
             available: withdrawal_amount,
-            held: 0.0,
             total: withdrawal_amount,
-            locked: false,
+            ..Account::default()
         };
         account.apply_transaction(withdrawal.clone()).unwrap();
         let mut transactions = TransactionMap::new();
@@ -380,10 +378,7 @@ client,available,held,total,locked
             Account {
                 client: 1,
                 transactions,
-                available: 0.0,
-                held: 0.0,
-                total: 0.0,
-                locked: false
+                ..Account::default()
             }
         );
     }
@@ -394,10 +389,7 @@ client,available,held,total,locked
         let mut account = Account {
             client: 1,
             transactions: TransactionMap::default(),
-            available: 0.0,
-            held: 0.0,
-            total: 0.0,
-            locked: false,
+            ..Account::default()
         };
         assert!(matches!(
             account.apply_transaction(withdrawal.clone()).unwrap_err(),
