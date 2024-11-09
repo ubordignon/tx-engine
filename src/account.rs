@@ -1,9 +1,12 @@
-use std::{fmt::Display, io::stdout};
+use std::{collections::HashMap, fmt::Display, io::stdout};
 
 use serde::{Serialize, Serializer};
 use thiserror::Error;
 
-use super::transaction::{Transaction, TransactionType, Transactions};
+use super::{
+    transaction::{Transaction, TransactionType},
+    types::{ClientId, TransactionId},
+};
 
 #[derive(Debug, Error)]
 pub enum AccountError {
@@ -12,8 +15,10 @@ pub enum AccountError {
     #[error("io error: {0}")]
     IoError(#[from] std::io::Error),
     #[error("insufficient funds to apply withdrawal, account: {0}, withdrawal: {1}")]
-    WithdrawalError(Account, Transaction),
+    WithdrawalError(ClientId, TransactionId),
 }
+
+type TransactionMap = HashMap<TransactionId, Transaction>;
 
 const DECIMAL_PRECISION: i32 = 4;
 
@@ -29,11 +34,11 @@ where
     ser.serialize_f64(int + frac)
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[derive(Debug, Default, PartialEq, Serialize)]
 pub struct Account {
-    client: u16,
+    client: ClientId,
     #[serde(skip)]
-    transactions: Transactions,
+    transactions: TransactionMap,
     #[serde(serialize_with = "serialize_f64_to_decimal_precision")]
     available: f64,
     #[serde(serialize_with = "serialize_f64_to_decimal_precision")]
@@ -44,7 +49,7 @@ pub struct Account {
 }
 
 impl Account {
-    pub fn new(client: u16) -> Self {
+    pub fn new(client: ClientId) -> Self {
         Self {
             client,
             ..Self::default()
@@ -60,8 +65,7 @@ impl Account {
             );
         }
 
-        // TODO: consider referencing, see `Account` cloning for `WithdrawalError`
-        self.transactions.push(tx.clone());
+        self.transactions.insert(*tx.tx(), tx.clone());
         match &tx.type_() {
             TransactionType::Deposit => {
                 let amount = tx
@@ -75,7 +79,7 @@ impl Account {
                     .amount()
                     .expect("withdrawals should be some non zero amount");
                 if self.available < amount {
-                    return Err(AccountError::WithdrawalError(self.clone(), tx));
+                    return Err(AccountError::WithdrawalError(self.client, *tx.tx()));
                 }
                 self.available -= amount;
                 self.total -= amount;
@@ -114,14 +118,14 @@ impl Accounts {
 
 #[cfg(test)]
 mod tests {
-    use super::{Account, AccountError, Accounts, Transaction, TransactionType, Transactions};
+    use super::{Account, AccountError, Accounts, Transaction, TransactionMap, TransactionType};
 
     #[test]
     fn serialize_accounts() {
         let accounts = Accounts(vec![
             Account {
                 client: 1,
-                transactions: Transactions::default(),
+                transactions: TransactionMap::default(),
                 available: 1.5,
                 held: 0.0,
                 total: 1.5,
@@ -129,7 +133,7 @@ mod tests {
             },
             Account {
                 client: 2,
-                transactions: Transactions::default(),
+                transactions: TransactionMap::default(),
                 available: 2.0,
                 held: 0.0,
                 total: 2.0,
@@ -155,7 +159,7 @@ client,available,held,total,locked
     fn serialize_long_floats() {
         let account = Account {
             client: 1,
-            transactions: Transactions::default(),
+            transactions: TransactionMap::default(),
             available: 1.11223344,
             held: 0.0,
             total: 1.11223344,
@@ -187,11 +191,13 @@ client,available,held,total,locked
         let deposit = Transaction::new(TransactionType::Deposit, 1, 1, Some(deposit_amount));
         let mut account = Account::new(1);
         account.apply_transaction(deposit.clone()).unwrap();
+        let mut transactions = TransactionMap::new();
+        transactions.insert(*deposit.tx(), deposit);
         assert_eq!(
             account,
             Account {
                 client: 1,
-                transactions: Transactions(vec![deposit]),
+                transactions,
                 available: deposit_amount,
                 held: 0.0,
                 total: deposit_amount,
@@ -215,18 +221,20 @@ client,available,held,total,locked
             Transaction::new(TransactionType::Withdrawal, 1, 1, Some(withdrawal_amount));
         let mut account = Account {
             client: 1,
-            transactions: Transactions::default(),
+            transactions: TransactionMap::default(),
             available: withdrawal_amount,
             held: 0.0,
             total: withdrawal_amount,
             locked: false,
         };
         account.apply_transaction(withdrawal.clone()).unwrap();
+        let mut transactions = TransactionMap::new();
+        transactions.insert(*withdrawal.tx(), withdrawal);
         assert_eq!(
             account,
             Account {
                 client: 1,
-                transactions: Transactions(vec![withdrawal]),
+                transactions,
                 available: 0.0,
                 held: 0.0,
                 total: 0.0,
@@ -240,7 +248,7 @@ client,available,held,total,locked
         let withdrawal = Transaction::new(TransactionType::Withdrawal, 1, 1, Some(1.0));
         let mut account = Account {
             client: 1,
-            transactions: Transactions::default(),
+            transactions: TransactionMap::default(),
             available: 0.0,
             held: 0.0,
             total: 0.0,
@@ -248,7 +256,7 @@ client,available,held,total,locked
         };
         assert!(matches!(
             account.apply_transaction(withdrawal.clone()).unwrap_err(),
-            AccountError::WithdrawalError(..)
+            AccountError::WithdrawalError(1, 1)
         ));
     }
 

@@ -4,6 +4,8 @@ use derive_getters::Getters;
 use derive_more::{Constructor, Deref, DerefMut};
 use serde::Deserialize;
 
+use super::types::{ClientId, TransactionId};
+
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum TransactionType {
@@ -18,8 +20,8 @@ pub enum TransactionType {
 pub struct Transaction {
     #[serde(rename = "type")]
     type_: TransactionType,
-    client: u16,
-    tx: u32,
+    client: ClientId,
+    tx: TransactionId,
     amount: Option<f64>,
 }
 
@@ -41,8 +43,7 @@ impl Display for Transaction {
     }
 }
 
-// TODO: remove `Clone` in optimization
-#[derive(Clone, Debug, Default, Deref, DerefMut, PartialEq)]
+#[derive(Debug, Default, Deref, DerefMut, PartialEq)]
 pub struct Transactions(pub Vec<Transaction>);
 
 impl Transactions {
