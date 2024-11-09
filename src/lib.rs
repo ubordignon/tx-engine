@@ -4,6 +4,8 @@ mod types;
 
 pub use self::{
     account::{Account, AccountError, Accounts},
-    transaction::{Transaction, TransactionType, Transactions},
+    transaction::{
+        Transaction, TransactionCsvIterator, TransactionType, Transactions, TransactionsCsv,
+    },
     types::{ClientId, TransactionId},
 };
