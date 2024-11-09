@@ -31,6 +31,10 @@ impl Transaction {
     pub fn dispute(&mut self) {
         self.disputed = true;
     }
+
+    pub fn resolve(&mut self) {
+        self.disputed = false;
+    }
 }
 impl Display for Transaction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

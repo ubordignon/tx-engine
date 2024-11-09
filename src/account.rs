@@ -18,6 +18,10 @@ pub enum AccountError {
     Withdrawal(ClientId, TransactionId),
     #[error("disputed transaction not found, account, {0}, transaction: {1}")]
     Dispute(ClientId, TransactionId),
+    #[error("resolved transaction not found, account, {0}, transaction: {1}")]
+    Resolve(ClientId, TransactionId),
+    #[error("resolved transaction wasn't disputed, account, {0}, transaction: {1}")]
+    ResolveUndisputed(ClientId, TransactionId),
 }
 
 type TransactionMap = HashMap<TransactionId, Transaction>;
@@ -125,7 +129,37 @@ impl Account {
                     _ => panic!("deposits and withdrawals are the only transaction types stored"),
                 }
             }
-            TransactionType::Resolve => (),
+            TransactionType::Resolve => {
+                let disputed = self
+                    .transactions
+                    .get_mut(tx.tx())
+                    .ok_or(AccountError::Resolve(self.client, *tx.tx()))?;
+                if !disputed.disputed() {
+                    return Err(AccountError::ResolveUndisputed(self.client, *disputed.tx()));
+                }
+                match disputed.type_() {
+                    TransactionType::Deposit => {
+                        let amount = disputed
+                            .amount()
+                            .expect("amount should be some non zero value as checked above");
+                        self.available += amount;
+                        self.held -= amount;
+                    }
+                    TransactionType::Withdrawal => {
+                        // The withdrawal dispute was resolved, which means e.g. that the dispute
+                        // claim was withdrawn, pun unintended. In other words, the withdrawal took
+                        // place as expected and the funds involved cannot be credited to the
+                        // client any longer.
+                        let amount = disputed
+                            .amount()
+                            .expect("amount should be some non zero value as checked above");
+                        self.held -= amount;
+                        self.total -= amount;
+                    }
+                    _ => panic!("deposits and withdrawals are the only transaction types stored"),
+                }
+                disputed.resolve();
+            }
             TransactionType::Chargeback => (),
         }
         Ok(())
@@ -401,6 +435,97 @@ client,available,held,total,locked
                 ))
                 .unwrap_err(),
             AccountError::Dispute(1, 3)
+        ));
+    }
+
+    #[test]
+    fn apply_resolve() {
+        let available = 8.0;
+        let held = 2.0;
+        let total = available + held;
+
+        let tx_amount = 1.0;
+        let deposit = Transaction::new(TransactionType::Deposit, 1, 1, Some(tx_amount), true);
+        let withdrawal = Transaction::new(TransactionType::Withdrawal, 1, 2, Some(tx_amount), true);
+        let mut transactions = TransactionMap::new();
+        transactions.insert(*deposit.tx(), deposit);
+        transactions.insert(*withdrawal.tx(), withdrawal);
+
+        let mut account = Account {
+            client: 1,
+            transactions,
+            available,
+            held,
+            total,
+            locked: false,
+        };
+
+        account
+            .apply_transaction(Transaction::new(
+                TransactionType::Resolve,
+                1,
+                1,
+                None,
+                false,
+            ))
+            .unwrap();
+
+        assert_eq!(account.available, available + tx_amount);
+        assert_eq!(account.held, held - tx_amount);
+        assert_eq!(account.total, total);
+        assert_eq!(account.total, account.available + account.held);
+        assert!(!*account.transactions.get(&1).unwrap().disputed());
+
+        account
+            .apply_transaction(Transaction::new(
+                TransactionType::Resolve,
+                1,
+                2,
+                None,
+                false,
+            ))
+            .unwrap();
+
+        assert_eq!(account.available, available + tx_amount);
+        assert_eq!(account.held, held - tx_amount * 2.0);
+        assert_eq!(account.total, total - tx_amount);
+        assert_eq!(account.total, account.available + account.held);
+        assert!(!*account.transactions.get(&2).unwrap().disputed());
+
+        assert!(matches!(
+            account
+                .apply_transaction(Transaction::new(
+                    TransactionType::Resolve,
+                    1,
+                    3,
+                    None,
+                    false,
+                ))
+                .unwrap_err(),
+            AccountError::Resolve(1, 3)
+        ));
+
+        account
+            .apply_transaction(Transaction::new(
+                TransactionType::Withdrawal,
+                1,
+                3,
+                Some(tx_amount),
+                false,
+            ))
+            .unwrap();
+
+        assert!(matches!(
+            account
+                .apply_transaction(Transaction::new(
+                    TransactionType::Resolve,
+                    1,
+                    3,
+                    None,
+                    false,
+                ))
+                .unwrap_err(),
+            AccountError::ResolveUndisputed(1, 3)
         ));
     }
 }
