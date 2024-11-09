@@ -72,7 +72,12 @@ impl Account {
                     .expect("deposits should be some non zero amount");
                 self.available += amount;
                 self.total += amount;
-                self.transactions.insert(*tx.tx(), tx);
+                if let Some(tx_clashed) = self.transactions.insert(*tx.tx(), tx) {
+                    panic!(
+                        "multiple transactions with the same id: {}",
+                        *tx_clashed.tx()
+                    );
+                }
             }
             TransactionType::Withdrawal => {
                 let amount = tx
@@ -83,7 +88,12 @@ impl Account {
                 }
                 self.available -= amount;
                 self.total -= amount;
-                self.transactions.insert(*tx.tx(), tx);
+                if let Some(tx_clashed) = self.transactions.insert(*tx.tx(), tx) {
+                    panic!(
+                        "multiple transactions with the same id: {}",
+                        *tx_clashed.tx()
+                    );
+                }
             }
             TransactionType::Dispute => (),
             TransactionType::Resolve => (),
