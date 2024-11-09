@@ -1,4 +1,4 @@
-use std::{fmt::Display, fs::File};
+use std::{fmt::Display, fs::File, io::Read};
 
 use csv::{DeserializeRecordsIter, Error as CsvError, Reader as CsvReader};
 use derive_getters::Getters;
@@ -74,11 +74,33 @@ pub enum TransactionError {
     Csv(#[from] CsvError),
 }
 
-pub struct TransactionsCsv(CsvReader<File>);
+struct TransactionCsvFileReader(File);
+
+impl Read for TransactionCsvFileReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let len = self.0.read(buf)?;
+        let mut i = -1isize;
+        let mut j = 0;
+        while j < len {
+            if buf[j] != b' ' {
+                i += 1;
+                buf[i as usize] = buf[j];
+            }
+            j += 1;
+        }
+        i += 1;
+        Ok(i as usize)
+    }
+}
+pub struct TransactionsCsv(CsvReader<TransactionCsvFileReader>);
 
 impl TransactionsCsv {
     pub fn from_csv(path: &str) -> Result<Self, CsvError> {
-        Ok(Self(CsvReader::from_path(path)?))
+        let csv_file = File::open(path)?;
+
+        Ok(Self(CsvReader::from_reader(TransactionCsvFileReader(
+            csv_file,
+        ))))
     }
 }
 
@@ -91,7 +113,7 @@ impl TransactionsCsv {
 }
 
 pub struct TransactionCsvIterator<'a> {
-    csv_deserializer: DeserializeRecordsIter<'a, File, Transaction>,
+    csv_deserializer: DeserializeRecordsIter<'a, TransactionCsvFileReader, Transaction>,
 }
 
 impl Iterator for TransactionCsvIterator<'_> {
@@ -162,5 +184,22 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         assert_eq!(transactions, Transactions::from_csv(sample_path).unwrap().0);
+    }
+
+    #[test]
+    fn deserialize_transactions_whitespaces() {
+        let sample_path_ws = "src/test_utils/test_txs_whitespaces.csv";
+        let sample_path = "src/test_utils/test_txs.csv";
+        let mut transactions_csv_ws = TransactionsCsv::from_csv(sample_path_ws).unwrap();
+        let transactions_ws = transactions_csv_ws
+            .iter()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        let mut transactions_csv = TransactionsCsv::from_csv(sample_path).unwrap();
+        let transactions = transactions_csv
+            .iter()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(transactions_ws, transactions);
     }
 }
