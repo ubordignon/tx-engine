@@ -1,5 +1,6 @@
-use std::fmt::Display;
+use std::{fmt::Display, fs::File};
 
+use csv::{DeserializeRecordsIter, Error as CsvError, Reader as CsvReader};
 use derive_getters::Getters;
 use derive_more::{Constructor, Deref, DerefMut};
 use serde::Deserialize;
@@ -58,17 +59,44 @@ impl Display for Transaction {
 pub struct Transactions(pub Vec<Transaction>);
 
 impl Transactions {
-    pub fn from_csv(path: &str) -> Result<Self, csv::Error> {
-        csv::Reader::from_path(path)?
+    pub fn from_csv(path: &str) -> Result<Self, CsvError> {
+        CsvReader::from_path(path)?
             .deserialize()
             .collect::<Result<_, _>>()
             .map(Self)
     }
 }
 
+pub struct TransactionsCsv(CsvReader<File>);
+
+impl TransactionsCsv {
+    pub fn from_csv(path: &str) -> Result<Self, CsvError> {
+        Ok(Self(CsvReader::from_path(path)?))
+    }
+}
+
+impl TransactionsCsv {
+    pub fn iter(&mut self) -> TransactionCsvIterator<'_> {
+        TransactionCsvIterator {
+            csv_deserializer: self.0.deserialize(),
+        }
+    }
+}
+
+pub struct TransactionCsvIterator<'a> {
+    csv_deserializer: DeserializeRecordsIter<'a, File, Transaction>,
+}
+
+impl Iterator for TransactionCsvIterator<'_> {
+    type Item = Result<Transaction, CsvError>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.csv_deserializer.next()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Transaction, TransactionType, Transactions};
+    use super::{Transaction, TransactionType, Transactions, TransactionsCsv};
 
     #[test]
     fn deserialize_transactions() {
@@ -114,5 +142,16 @@ mod tests {
                 },
             ])
         );
+    }
+
+    #[test]
+    fn deserialize_transactions_iterator() {
+        let sample_path = "src/test_utils/test_txs.csv";
+        let mut transactions_csv = TransactionsCsv::from_csv(sample_path).unwrap();
+        let transactions = transactions_csv
+            .iter()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(transactions, Transactions::from_csv(sample_path).unwrap().0);
     }
 }
