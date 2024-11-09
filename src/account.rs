@@ -1,10 +1,11 @@
 use std::{collections::HashMap, fmt::Display, io::stdout};
 
+use derive_more::{Deref, DerefMut};
 use serde::{Serialize, Serializer};
 use thiserror::Error;
 
 use super::{
-    transaction::{Transaction, TransactionType},
+    transaction::{Transaction, TransactionType, Transactions},
     types::{ClientId, TransactionId},
 };
 
@@ -218,9 +219,41 @@ impl Display for Account {
     }
 }
 
+#[derive(Default, Deref, DerefMut)]
 pub struct Accounts(HashMap<ClientId, Account>);
 
 impl Accounts {
+    pub fn from_transactions(
+        transactions: Transactions,
+        strict: bool,
+    ) -> Result<Self, AccountError> {
+        let mut accounts = Self::default();
+        // TODO: use iterator
+        for tx in transactions.0 {
+            if let Err(e) = accounts
+                .entry(*tx.client())
+                .or_insert(Account::new(*tx.client()))
+                .apply_transaction(tx)
+            {
+                if !strict
+                    && matches!(
+                        e,
+                        AccountError::Withdrawal(..)
+                            | AccountError::Dispute(..)
+                            | AccountError::Resolve(..)
+                            | AccountError::ResolveUndisputed(..)
+                            | AccountError::Chargeback(..)
+                            | AccountError::ChargebackUndisputed(..)
+                    )
+                {
+                    continue;
+                }
+                return Err(e);
+            }
+        }
+        Ok(accounts)
+    }
+
     pub fn to_csv(&self) -> Result<(), AccountError> {
         let mut wrt = csv::Writer::from_writer(stdout());
         for acc in self.0.values() {
