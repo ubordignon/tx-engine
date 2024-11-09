@@ -4,6 +4,7 @@ use csv::{DeserializeRecordsIter, Error as CsvError, Reader as CsvReader};
 use derive_getters::Getters;
 use derive_more::{Constructor, Deref, DerefMut};
 use serde::Deserialize;
+use thiserror::Error;
 
 use super::types::{ClientId, TransactionId};
 
@@ -67,6 +68,12 @@ impl Transactions {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum TransactionError {
+    #[error("csv error: {0}")]
+    Csv(#[from] CsvError),
+}
+
 pub struct TransactionsCsv(CsvReader<File>);
 
 impl TransactionsCsv {
@@ -88,9 +95,11 @@ pub struct TransactionCsvIterator<'a> {
 }
 
 impl Iterator for TransactionCsvIterator<'_> {
-    type Item = Result<Transaction, CsvError>;
+    type Item = Result<Transaction, TransactionError>;
     fn next(&mut self) -> Option<Self::Item> {
-        self.csv_deserializer.next()
+        self.csv_deserializer
+            .next()
+            .map(|tx| tx.map_err(|e| e.into()))
     }
 }
 

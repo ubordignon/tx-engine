@@ -5,7 +5,7 @@ use serde::{Serialize, Serializer};
 use thiserror::Error;
 
 use super::{
-    transaction::{Transaction, TransactionType, Transactions},
+    transaction::{Transaction, TransactionError, TransactionType, Transactions},
     types::{ClientId, TransactionId},
 };
 
@@ -27,6 +27,8 @@ pub enum AccountError {
     Chargeback(ClientId, TransactionId),
     #[error("chargeback transaction wasn't disputed, account, {0}, transaction: {1}")]
     ChargebackUndisputed(ClientId, TransactionId),
+    #[error("transaction error: {0}")]
+    Transaction(#[from] TransactionError),
 }
 
 type TransactionMap = HashMap<TransactionId, Transaction>;
@@ -223,13 +225,13 @@ impl Display for Account {
 pub struct Accounts(HashMap<ClientId, Account>);
 
 impl Accounts {
-    pub fn from_transactions(
-        transactions: Transactions,
+    pub fn from_transaction_iter<T: Iterator<Item = Result<Transaction, TransactionError>>>(
+        tx_iter: T,
         strict: bool,
     ) -> Result<Self, AccountError> {
         let mut accounts = Self::default();
-        // TODO: use iterator
-        for tx in transactions.0 {
+        for tx in tx_iter {
+            let tx = tx?;
             if let Err(e) = accounts
                 .entry(*tx.client())
                 .or_insert(Account::new(*tx.client()))
@@ -252,6 +254,13 @@ impl Accounts {
             }
         }
         Ok(accounts)
+    }
+
+    pub fn from_transactions(
+        transactions: Transactions,
+        strict: bool,
+    ) -> Result<Self, AccountError> {
+        Self::from_transaction_iter(transactions.0.into_iter().map(Ok), strict)
     }
 
     pub fn to_csv(&self) -> Result<(), AccountError> {
