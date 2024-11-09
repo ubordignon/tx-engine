@@ -23,10 +23,6 @@ pub enum AccountError {
     Resolve(ClientId, TransactionId),
     #[error("resolved transaction wasn't disputed, account, {0}, transaction: {1}")]
     ResolveUndisputed(ClientId, TransactionId),
-    #[error("chargeback transaction not found, account, {0}, transaction: {1}")]
-    Chargeback(ClientId, TransactionId),
-    #[error("chargeback transaction wasn't disputed, account, {0}, transaction: {1}")]
-    ChargebackUndisputed(ClientId, TransactionId),
     #[error("transaction error: {0}")]
     Transaction(#[from] TransactionError),
 }
@@ -163,12 +159,9 @@ impl Account {
                 let disputed = self
                     .transactions
                     .get_mut(tx.tx())
-                    .ok_or(AccountError::Chargeback(self.client, *tx.tx()))?;
+                    .ok_or(AccountError::Resolve(self.client, *tx.tx()))?;
                 if !disputed.disputed() {
-                    return Err(AccountError::ChargebackUndisputed(
-                        self.client,
-                        *disputed.tx(),
-                    ));
+                    return Err(AccountError::ResolveUndisputed(self.client, *disputed.tx()));
                 }
                 match disputed.type_() {
                     TransactionType::Deposit => {
@@ -228,8 +221,6 @@ impl Accounts {
                             | AccountError::Dispute(..)
                             | AccountError::Resolve(..)
                             | AccountError::ResolveUndisputed(..)
-                            | AccountError::Chargeback(..)
-                            | AccountError::ChargebackUndisputed(..)
                     )
                 {
                     continue;
@@ -627,7 +618,7 @@ client,available,held,total,locked
                     false,
                 ))
                 .unwrap_err(),
-            AccountError::Chargeback(1, 3)
+            AccountError::Resolve(1, 3)
         ));
 
         account
@@ -650,7 +641,7 @@ client,available,held,total,locked
                     false,
                 ))
                 .unwrap_err(),
-            AccountError::ChargebackUndisputed(1, 3)
+            AccountError::ResolveUndisputed(1, 3)
         ));
     }
 }
