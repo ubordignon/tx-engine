@@ -16,6 +16,8 @@ pub enum AccountError {
     Io(#[from] std::io::Error),
     #[error("insufficient funds to apply withdrawal, account: {0}, withdrawal: {1}")]
     Withdrawal(ClientId, TransactionId),
+    #[error("disputed transaction not found, account, {0}, transaction: {1}")]
+    Dispute(ClientId, TransactionId),
 }
 
 type TransactionMap = HashMap<TransactionId, Transaction>;
@@ -95,7 +97,34 @@ impl Account {
                     );
                 }
             }
-            TransactionType::Dispute => (),
+            TransactionType::Dispute => {
+                let disputed = self
+                    .transactions
+                    .get_mut(tx.tx())
+                    .ok_or(AccountError::Dispute(self.client, *tx.tx()))?;
+                match disputed.type_() {
+                    TransactionType::Deposit => {
+                        let amount = disputed
+                            .amount()
+                            .expect("amount should be some non zero value as checked above");
+                        self.available -= amount;
+                        self.held += amount;
+                        disputed.dispute();
+                    }
+                    TransactionType::Withdrawal => {
+                        // Disputing a withdrawal, e.g. disputing having received amount withdrawn.
+                        // A valid withdrawal dispute would imply that the client has once more a
+                        // total amount of funds that includes the ones they attempted to withdraw.
+                        let amount = disputed
+                            .amount()
+                            .expect("amount should be some non zero value as checked above");
+                        self.held += amount;
+                        self.total += amount;
+                        disputed.dispute();
+                    }
+                    _ => panic!("deposits and withdrawals are the only transaction types stored"),
+                }
+            }
             TransactionType::Resolve => (),
             TransactionType::Chargeback => (),
         }
@@ -300,5 +329,78 @@ client,available,held,total,locked
                 false,
             ))
             .unwrap();
+    }
+
+    #[test]
+    fn apply_dispute() {
+        let available = 9.0;
+        let held = 0.0;
+        let total = available;
+        let mut account = Account {
+            client: 1,
+            transactions: TransactionMap::default(),
+            available,
+            held,
+            total,
+            locked: false,
+        };
+
+        let tx_amount = 1.0;
+        let deposit = Transaction::new(TransactionType::Deposit, 1, 1, Some(tx_amount), false);
+        // Increase available and total by `tx_amount`
+        account.apply_transaction(deposit.clone()).unwrap();
+        // Decrease available and increase held by `tx_amount`
+        account
+            .apply_transaction(Transaction::new(
+                TransactionType::Dispute,
+                1,
+                1,
+                None,
+                false,
+            ))
+            .unwrap();
+
+        // Available was increased and decreased by the same amount
+        assert_eq!(account.available, available);
+        assert_eq!(account.held, tx_amount);
+        assert_eq!(account.total, total + tx_amount);
+        assert_eq!(account.total, account.available + account.held);
+        assert!(*account.transactions.get(&1).unwrap().disputed());
+
+        let withdrawal =
+            Transaction::new(TransactionType::Withdrawal, 1, 2, Some(tx_amount), false);
+        // Decrease available and total by `tx_amount`
+        account.apply_transaction(withdrawal.clone()).unwrap();
+        // Increase held and total by `tx_amount`
+        account
+            .apply_transaction(Transaction::new(
+                TransactionType::Dispute,
+                1,
+                2,
+                None,
+                false,
+            ))
+            .unwrap();
+
+        // Available is not restored by withdrawal dispute
+        assert_eq!(account.available, available - tx_amount);
+        assert_eq!(account.held, tx_amount * 2.0);
+        // Total is not changed, as a result of the dispute
+        assert_eq!(account.total, total + tx_amount);
+        assert_eq!(account.total, account.available + account.held);
+        assert!(*account.transactions.get(&2).unwrap().disputed());
+
+        assert!(matches!(
+            account
+                .apply_transaction(Transaction::new(
+                    TransactionType::Dispute,
+                    1,
+                    3,
+                    None,
+                    false,
+                ))
+                .unwrap_err(),
+            AccountError::Dispute(1, 3)
+        ));
     }
 }
