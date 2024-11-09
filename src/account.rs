@@ -65,7 +65,6 @@ impl Account {
             );
         }
 
-        self.transactions.insert(*tx.tx(), tx.clone());
         match &tx.type_() {
             TransactionType::Deposit => {
                 let amount = tx
@@ -73,6 +72,7 @@ impl Account {
                     .expect("deposits should be some non zero amount");
                 self.available += amount;
                 self.total += amount;
+                self.transactions.insert(*tx.tx(), tx);
             }
             TransactionType::Withdrawal => {
                 let amount = tx
@@ -83,6 +83,7 @@ impl Account {
                 }
                 self.available -= amount;
                 self.total -= amount;
+                self.transactions.insert(*tx.tx(), tx);
             }
             TransactionType::Dispute => (),
             TransactionType::Resolve => (),
