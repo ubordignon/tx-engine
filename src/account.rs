@@ -11,11 +11,11 @@ use super::{
 #[derive(Debug, Error)]
 pub enum AccountError {
     #[error("csv error: {0}")]
-    CsvError(#[from] csv::Error),
+    Csv(#[from] csv::Error),
     #[error("io error: {0}")]
-    IoError(#[from] std::io::Error),
+    Io(#[from] std::io::Error),
     #[error("insufficient funds to apply withdrawal, account: {0}, withdrawal: {1}")]
-    WithdrawalError(ClientId, TransactionId),
+    Withdrawal(ClientId, TransactionId),
 }
 
 type TransactionMap = HashMap<TransactionId, Transaction>;
@@ -79,7 +79,7 @@ impl Account {
                     .amount()
                     .expect("withdrawals should be some non zero amount");
                 if self.available < amount {
-                    return Err(AccountError::WithdrawalError(self.client, *tx.tx()));
+                    return Err(AccountError::Withdrawal(self.client, *tx.tx()));
                 }
                 self.available -= amount;
                 self.total -= amount;
@@ -256,7 +256,7 @@ client,available,held,total,locked
         };
         assert!(matches!(
             account.apply_transaction(withdrawal.clone()).unwrap_err(),
-            AccountError::WithdrawalError(1, 1)
+            AccountError::Withdrawal(1, 1)
         ));
     }
 
