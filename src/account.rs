@@ -22,6 +22,10 @@ pub enum AccountError {
     Resolve(ClientId, TransactionId),
     #[error("resolved transaction wasn't disputed, account, {0}, transaction: {1}")]
     ResolveUndisputed(ClientId, TransactionId),
+    #[error("chargeback transaction not found, account, {0}, transaction: {1}")]
+    Chargeback(ClientId, TransactionId),
+    #[error("chargeback transaction wasn't disputed, account, {0}, transaction: {1}")]
+    ChargebackUndisputed(ClientId, TransactionId),
 }
 
 type TransactionMap = HashMap<TransactionId, Transaction>;
@@ -60,6 +64,10 @@ impl Account {
             client,
             ..Self::default()
         }
+    }
+
+    fn freeze(&mut self) {
+        self.locked = true;
     }
 
     pub fn apply_transaction(&mut self, tx: Transaction) -> Result<(), AccountError> {
@@ -160,7 +168,41 @@ impl Account {
                 }
                 disputed.resolve();
             }
-            TransactionType::Chargeback => (),
+            TransactionType::Chargeback => {
+                let disputed = self
+                    .transactions
+                    .get_mut(tx.tx())
+                    .ok_or(AccountError::Chargeback(self.client, *tx.tx()))?;
+                if !disputed.disputed() {
+                    return Err(AccountError::ChargebackUndisputed(
+                        self.client,
+                        *disputed.tx(),
+                    ));
+                }
+                match disputed.type_() {
+                    TransactionType::Deposit => {
+                        let amount = disputed
+                            .amount()
+                            .expect("amount should be some non zero value as checked above");
+                        self.held -= amount;
+                        self.total -= amount;
+                        disputed.resolve();
+                    }
+                    TransactionType::Withdrawal => {
+                        // If a chargeback was issued for a withdrawal transaction, then the
+                        // withdrawal didn't take place as expected, and those funds should once
+                        // more become available to the client.
+                        let amount = disputed
+                            .amount()
+                            .expect("amount should be some non zero value as checked above");
+                        self.available += amount;
+                        self.held -= amount;
+                    }
+                    _ => panic!("deposits and withdrawals are the only transaction types stored"),
+                }
+                disputed.resolve();
+                self.freeze();
+            }
         }
         Ok(())
     }
@@ -526,6 +568,99 @@ client,available,held,total,locked
                 ))
                 .unwrap_err(),
             AccountError::ResolveUndisputed(1, 3)
+        ));
+    }
+
+    #[test]
+    fn apply_chargeback() {
+        let available = 8.0;
+        let held = 2.0;
+        let total = available + held;
+
+        let tx_amount = 1.0;
+        let deposit = Transaction::new(TransactionType::Deposit, 1, 1, Some(tx_amount), true);
+        let withdrawal = Transaction::new(TransactionType::Withdrawal, 1, 2, Some(tx_amount), true);
+        let mut transactions = TransactionMap::new();
+        transactions.insert(*deposit.tx(), deposit);
+        transactions.insert(*withdrawal.tx(), withdrawal);
+
+        let mut account = Account {
+            client: 1,
+            transactions,
+            available,
+            held,
+            total,
+            locked: false,
+        };
+
+        account
+            .apply_transaction(Transaction::new(
+                TransactionType::Chargeback,
+                1,
+                1,
+                None,
+                false,
+            ))
+            .unwrap();
+
+        assert_eq!(account.available, available);
+        assert_eq!(account.held, held - tx_amount);
+        assert_eq!(account.total, total - tx_amount);
+        assert_eq!(account.total, account.available + account.held);
+        assert!(!*account.transactions.get(&1).unwrap().disputed());
+        assert!(account.locked);
+
+        account.locked = false;
+        account
+            .apply_transaction(Transaction::new(
+                TransactionType::Chargeback,
+                1,
+                2,
+                None,
+                false,
+            ))
+            .unwrap();
+
+        assert_eq!(account.available, available + tx_amount);
+        assert_eq!(account.held, held - tx_amount * 2.0);
+        assert_eq!(account.total, total - tx_amount);
+        assert_eq!(account.total, account.available + account.held);
+        assert!(!*account.transactions.get(&2).unwrap().disputed());
+
+        assert!(matches!(
+            account
+                .apply_transaction(Transaction::new(
+                    TransactionType::Chargeback,
+                    1,
+                    3,
+                    None,
+                    false,
+                ))
+                .unwrap_err(),
+            AccountError::Chargeback(1, 3)
+        ));
+
+        account
+            .apply_transaction(Transaction::new(
+                TransactionType::Withdrawal,
+                1,
+                3,
+                Some(tx_amount),
+                false,
+            ))
+            .unwrap();
+
+        assert!(matches!(
+            account
+                .apply_transaction(Transaction::new(
+                    TransactionType::Chargeback,
+                    1,
+                    3,
+                    None,
+                    false,
+                ))
+                .unwrap_err(),
+            AccountError::ChargebackUndisputed(1, 3)
         ));
     }
 }
