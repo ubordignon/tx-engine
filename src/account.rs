@@ -218,12 +218,12 @@ impl Display for Account {
     }
 }
 
-pub struct Accounts(Vec<Account>);
+pub struct Accounts(HashMap<ClientId, Account>);
 
 impl Accounts {
     pub fn to_csv(&self) -> Result<(), AccountError> {
         let mut wrt = csv::Writer::from_writer(stdout());
-        for acc in &self.0 {
+        for acc in self.0.values() {
             wrt.serialize(acc)?;
         }
         wrt.flush()?;
@@ -234,11 +234,11 @@ impl Accounts {
 
 #[cfg(test)]
 mod tests {
-    use super::{Account, AccountError, Accounts, Transaction, TransactionMap, TransactionType};
+    use super::{Account, AccountError, Transaction, TransactionMap, TransactionType};
 
     #[test]
     fn serialize_accounts() {
-        let accounts = Accounts(vec![
+        let accounts = vec![
             Account {
                 client: 1,
                 transactions: TransactionMap::default(),
@@ -255,10 +255,10 @@ mod tests {
                 total: 2.0,
                 locked: false,
             },
-        ]);
+        ];
 
         let mut wrt = csv::Writer::from_writer(vec![]);
-        for acc in accounts.0 {
+        for acc in accounts {
             wrt.serialize(acc).unwrap();
         }
         let accounts = &wrt.into_inner().unwrap();
