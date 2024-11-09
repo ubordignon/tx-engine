@@ -84,9 +84,7 @@ impl Account {
 
         match &tx.type_() {
             TransactionType::Deposit => {
-                let amount = tx
-                    .amount()
-                    .expect("deposits should be some non zero amount");
+                let amount = tx.amount();
                 self.available += amount;
                 self.total += amount;
                 if let Some(tx_clashed) = self.transactions.insert(*tx.tx(), tx) {
@@ -97,9 +95,7 @@ impl Account {
                 }
             }
             TransactionType::Withdrawal => {
-                let amount = tx
-                    .amount()
-                    .expect("withdrawals should be some non zero amount");
+                let amount = tx.amount();
                 if self.available < amount {
                     return Err(AccountError::Withdrawal(self.client, *tx.tx()));
                 }
@@ -119,9 +115,7 @@ impl Account {
                     .ok_or(AccountError::Dispute(self.client, *tx.tx()))?;
                 match disputed.type_() {
                     TransactionType::Deposit => {
-                        let amount = disputed
-                            .amount()
-                            .expect("amount should be some non zero value as checked above");
+                        let amount = disputed.amount();
                         self.available -= amount;
                         self.held += amount;
                         disputed.dispute();
@@ -130,9 +124,7 @@ impl Account {
                         // Disputing a withdrawal, e.g. disputing having received amount withdrawn.
                         // A valid withdrawal dispute would imply that the client has once more a
                         // total amount of funds that includes the ones they attempted to withdraw.
-                        let amount = disputed
-                            .amount()
-                            .expect("amount should be some non zero value as checked above");
+                        let amount = disputed.amount();
                         self.held += amount;
                         self.total += amount;
                         disputed.dispute();
@@ -150,9 +142,7 @@ impl Account {
                 }
                 match disputed.type_() {
                     TransactionType::Deposit => {
-                        let amount = disputed
-                            .amount()
-                            .expect("amount should be some non zero value as checked above");
+                        let amount = disputed.amount();
                         self.available += amount;
                         self.held -= amount;
                     }
@@ -161,9 +151,7 @@ impl Account {
                         // claim was withdrawn, pun unintended. In other words, the withdrawal took
                         // place as expected and the funds involved cannot be credited to the
                         // client any longer.
-                        let amount = disputed
-                            .amount()
-                            .expect("amount should be some non zero value as checked above");
+                        let amount = disputed.amount();
                         self.held -= amount;
                         self.total -= amount;
                     }
@@ -184,9 +172,7 @@ impl Account {
                 }
                 match disputed.type_() {
                     TransactionType::Deposit => {
-                        let amount = disputed
-                            .amount()
-                            .expect("amount should be some non zero value as checked above");
+                        let amount = disputed.amount();
                         self.held -= amount;
                         self.total -= amount;
                         disputed.resolve();
@@ -195,9 +181,7 @@ impl Account {
                         // If a chargeback was issued for a withdrawal transaction, then the
                         // withdrawal didn't take place as expected, and those funds should once
                         // more become available to the client.
-                        let amount = disputed
-                            .amount()
-                            .expect("amount should be some non zero value as checked above");
+                        let amount = disputed.amount();
                         self.available += amount;
                         self.held -= amount;
                     }
@@ -371,20 +355,6 @@ client,available,held,total,locked
     }
 
     #[test]
-    #[should_panic(expected = "deposits should be some non zero amount")]
-    fn apply_deposit_with_none_amount() {
-        Account::new(1)
-            .apply_transaction(Transaction::new(
-                TransactionType::Deposit,
-                1,
-                1,
-                None,
-                false,
-            ))
-            .unwrap();
-    }
-
-    #[test]
     fn apply_withdrawal() {
         let withdrawal_amount = 1.0;
         let withdrawal = Transaction::new(
@@ -433,20 +403,6 @@ client,available,held,total,locked
             account.apply_transaction(withdrawal.clone()).unwrap_err(),
             AccountError::Withdrawal(1, 1)
         ));
-    }
-
-    #[test]
-    #[should_panic(expected = "withdrawals should be some non zero amount")]
-    fn apply_withdrawal_with_none_amount() {
-        Account::new(1)
-            .apply_transaction(Transaction::new(
-                TransactionType::Withdrawal,
-                1,
-                1,
-                None,
-                false,
-            ))
-            .unwrap();
     }
 
     #[test]

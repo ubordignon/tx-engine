@@ -24,12 +24,17 @@ pub struct Transaction {
     type_: TransactionType,
     client: ClientId,
     tx: TransactionId,
+    #[getter(skip)]
     amount: Option<f64>,
     #[serde(skip)]
     disputed: bool,
 }
 
 impl Transaction {
+    pub fn amount(&self) -> f64 {
+        self.amount.map_or(0.0, |a| a)
+    }
+
     pub fn dispute(&mut self) {
         self.disputed = true;
     }
