@@ -20,29 +20,35 @@ to have taken place as stated.
 
 ### Transaction chargeback
 
-A chargeback is issues when the disputed transaction was determined _not_ to have
+A chargeback is issued when the disputed transaction was determined _not_ to have
 taken place as stated. Specifically:
 
 * Deposit: when a chargeback is issued for a deposit, the client receives their
-funds back and the corresponding total account credit is decreased of the same amount.
+funds back and the corresponding amount is deducted by their total account credit.
 * Withdrawal: conversely, a chargeback issued on a withdrawal implies that the
-user is once more able to use the disputed funds
+user is once more able to use the disputed funds.
 
 In either circumstance, the account will be frozen.
 
 ### Testing
 
 The test suite is mostly concerned with determining that applying a given
-transaction to an account has the intended consequences. Changing transaction
+transaction to an account results in the intended consequences. Changing transaction
 application behavior is meant to break the test.
 
-Correct serde for transactions and accounts is also tested.
+Correct _serde_ for transactions and accounts is also tested.
 
 ### Dealing with inconsistencies
 
 Account creation methods, i.e. `Accounts::from_transactions` and
 `Accounts::from_transaction_iter` expose a `strict` parameter. When set to
 `false`, a class of common errors encountered during parsing will be disregarded.
+Currently these are:
+* Withdrawals resulting in an overdrawn account
+* Disputes on unknown transactions
+* Resolves/chargebacks of unknown transactions
+* Resolves/chargebacks of undisputed transactions
+
 Set to `true` to prevent swallowing any error.
 
 ## TODOs
